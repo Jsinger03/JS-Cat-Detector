@@ -1,0 +1,11 @@
+tensorflow
+keras
+numpy
+matplotlib
+pandas
+librosa
+opencv-python
+pyaudio
+pyttsx3
+tensorflow-metal
+tensorflow-gpu
