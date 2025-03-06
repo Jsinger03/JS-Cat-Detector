@@ -1,5 +1,26 @@
-venv/
-__pycache__/
+# .gitignore
+
+# Ignore data sets and large files
 data/
+*.tar.gz
+images/
+
+# Ignore model weight or checkpoint files
+*.pt
+*.onnx
+*.engine
+*.pth
+
+# Python cache and environment files
+__pycache__/
+*.py[cod]
+*.egg-info/
+env/
+venv/
+.venv/
+
+# Mac specific files
 .DS_Store
-tests/
+
+# Logs or output
+*.log
