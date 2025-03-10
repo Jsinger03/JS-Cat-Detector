@@ -17,3 +17,9 @@ sounddevice>=0.4.6
 # Numeric and image libraries
 numpy>=1.22.0
 pillow>=9.0.0
+librosa>=0.10.0
+pydub>=0.25.1
+matplotlib
+scipy
+pillow
+soundfile
