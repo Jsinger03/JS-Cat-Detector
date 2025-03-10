@@ -24,3 +24,6 @@ venv/
 
 # Logs or output
 *.log
+
+validation_results/
+audio_detector.py
