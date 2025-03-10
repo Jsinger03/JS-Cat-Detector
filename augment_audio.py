@@ -12,12 +12,16 @@ from pydub import AudioSegment
 import shutil
 import gc
 import torch  # Add PyTorch for GPU acceleration
+import time
+
+# Add a flag to control GPU usage - set to False if it's slower
+USE_GPU = True
 
 # Check if MPS (Mac) or CUDA is available
-if torch.backends.mps.is_available():
+if USE_GPU and torch.backends.mps.is_available():
     device = torch.device("mps")
     print(f"Using Apple Silicon GPU via MPS")
-elif torch.cuda.is_available():
+elif USE_GPU and torch.cuda.is_available():
     device = torch.device("cuda")
     print(f"Using NVIDIA GPU via CUDA")
 else:
@@ -44,20 +48,42 @@ def pitch_shift(audio, sr, n_steps):
     result = librosa.effects.pitch_shift(audio, sr=sr, n_steps=n_steps)
     return np.ascontiguousarray(result, dtype=np.float32)
 
+# CPU versions of functions for comparison
+def add_noise_cpu(audio, noise_factor=0.005):
+    """Add random noise to the audio using CPU."""
+    noise = np.random.randn(len(audio)).astype(np.float32) * noise_factor
+    return audio + noise
+
+def change_volume_cpu(audio, factor):
+    """Change the volume of the audio using CPU."""
+    return audio * factor
+
+def add_reverb_cpu(audio, sr, reverberance=50):
+    """Add reverb effect to audio using CPU."""
+    reverb_length = int(sr * reverberance / 1000)
+    impulse_response = np.exp(-np.linspace(0, 5, reverb_length)).astype(np.float32)
+    impulse_response = impulse_response / np.sum(impulse_response)
+    return signal.convolve(audio, impulse_response, mode='full')[:len(audio)]
+
+# GPU versions
 def add_noise(audio, noise_factor=0.005):
-    """Add random noise to the audio using GPU if available."""
-    # Make sure the array is contiguous and float32
+    """Add random noise to the audio."""
+    if device.type == "cpu":
+        return add_noise_cpu(audio, noise_factor)
+    
+    # GPU version
     audio = np.ascontiguousarray(audio, dtype=np.float32)
-    # Convert to PyTorch tensor and move to GPU if available
     audio_tensor = torch.tensor(audio, device=device, dtype=torch.float32)
     noise = torch.randn(len(audio), device=device, dtype=torch.float32) * noise_factor
     result = audio_tensor + noise
-    # Move back to CPU and convert to numpy
     return result.cpu().numpy()
 
 def change_volume(audio, factor):
-    """Change the volume of the audio using GPU if available."""
-    # Make sure the array is contiguous and float32
+    """Change the volume of the audio."""
+    if device.type == "cpu":
+        return change_volume_cpu(audio, factor)
+    
+    # GPU version
     audio = np.ascontiguousarray(audio, dtype=np.float32)
     audio_tensor = torch.tensor(audio, device=device, dtype=torch.float32)
     result = audio_tensor * factor
@@ -73,32 +99,28 @@ def apply_filter(audio, sr, filter_type='lowpass', cutoff_freq=1000):
     return signal.filtfilt(b, a, audio)
 
 def add_reverb(audio, sr, reverberance=50):
-    """Add reverb effect to audio using GPU acceleration."""
-    # Create a simple impulse response
-    reverb_length = int(sr * reverberance / 1000)  # Convert ms to samples
-    impulse_response = np.exp(-np.linspace(0, 5, reverb_length))
+    """Add reverb effect to audio."""
+    if device.type == "cpu":
+        return add_reverb_cpu(audio, sr, reverberance)
     
-    # Normalize the impulse response
+    # GPU version
+    reverb_length = int(sr * reverberance / 1000)
+    impulse_response = np.exp(-np.linspace(0, 5, reverb_length))
     impulse_response = impulse_response / np.sum(impulse_response)
     
-    # Make sure arrays are contiguous and float32
     audio = np.ascontiguousarray(audio, dtype=np.float32)
     impulse_response = np.ascontiguousarray(impulse_response, dtype=np.float32)
     
-    # Move to GPU for convolution if available
     audio_tensor = torch.tensor(audio, device=device, dtype=torch.float32)
     impulse_tensor = torch.tensor(impulse_response, device=device, dtype=torch.float32)
     
-    # Perform convolution on GPU
     result = torch.nn.functional.conv1d(
         audio_tensor.view(1, 1, -1),
         impulse_tensor.view(1, 1, -1),
         padding=len(impulse_response)-1
     ).view(-1)
     
-    # Move back to CPU and convert to numpy
-    result = result[:len(audio)].cpu().numpy()
-    return result
+    return result[:len(audio)].cpu().numpy()
 
 def convert_m4a_to_wav(input_path, output_path):
     """Convert m4a file to wav format."""
@@ -255,6 +277,34 @@ def main():
                            glob.glob(os.path.join(general_meows_dir, "*.flac"))
     
     print(f"Found {len(general_meow_files)} general meow files.")
+    
+    # Try both CPU and GPU to see which is faster
+    print("\nTesting performance...")
+    test_file = bentley_wav_files[0] if bentley_wav_files else general_meow_files[0]
+    
+    # Test CPU
+    global USE_GPU
+    USE_GPU = False
+    device = torch.device("cpu")
+    start_time = time.time()
+    augment_audio_file(test_file, output_dir, num_augmentations=1, save_plots=False)
+    cpu_time = time.time() - start_time
+    print(f"CPU processing time: {cpu_time:.2f} seconds")
+    
+    # Test GPU
+    if torch.backends.mps.is_available() or torch.cuda.is_available():
+        USE_GPU = True
+        device = torch.device("mps" if torch.backends.mps.is_available() else "cuda")
+        start_time = time.time()
+        augment_audio_file(test_file, output_dir, num_augmentations=1, save_plots=False)
+        gpu_time = time.time() - start_time
+        print(f"GPU processing time: {gpu_time:.2f} seconds")
+        
+        # Use the faster option
+        USE_GPU = gpu_time < cpu_time
+        device = torch.device("mps" if USE_GPU and torch.backends.mps.is_available() else 
+                             "cuda" if USE_GPU and torch.cuda.is_available() else "cpu")
+        print(f"Using {'GPU' if USE_GPU else 'CPU'} for processing (faster)")
     
     # Augmentation parameters
     bentley_augmentations = 20  # More augmentations for Bentley's meows

@@ -4,6 +4,9 @@ import numpy as np
 import librosa
 import csv
 import random
+import multiprocessing as mp
+from functools import partial
+from tqdm import tqdm
 
 # Parameters
 TARGET_SR = 16000  # 16 kHz
@@ -83,12 +86,19 @@ def train_test_split(file_list, split_ratio=0.8):
     return file_list[:split_idx], file_list[split_idx:]
 
 def process_and_collect(file_list):
-    data = []
-    for path in file_list:
-        spec = process_audio_file(path)
-        if spec is not None:
-            data.append(spec)
-    return data
+    """Process audio files in parallel using multiple CPU cores."""
+    # Use 75% of available cores to avoid overloading the system
+    num_cores = max(1, int(mp.cpu_count() * 0.75))
+    print(f"Processing audio files using {num_cores} CPU cores...")
+    
+    with mp.Pool(processes=num_cores) as pool:
+        # Process files in parallel
+        results = list(tqdm(pool.imap(process_audio_file, file_list), 
+                           total=len(file_list), 
+                           desc="Processing audio files"))
+    
+    # Filter out None results
+    return [r for r in results if r is not None]
 
 if __name__ == "__main__":
     # Process positive samples (meows)
