@@ -72,14 +72,20 @@ class MeowCNN(torch.nn.Module):
         x = self.fc2(x)
         return x
 
-# Audio processing parameters (same as in preprocess_audio.py)
+# Audio processing parameters
 TARGET_SR = 16000  # 16 kHz
-DURATION = 0.5  # Reduce to 0.5-second clips for faster response
-OVERLAP = 0.25  # 250ms overlap between buffers
+DURATION = 1.0  # Change back to 1.0 to match training
+OVERLAP = 0.5  # Adjust overlap accordingly (half of duration)
 BUFFER_SIZE = int(TARGET_SR * DURATION)
 OVERLAP_SIZE = int(TARGET_SR * OVERLAP)
 CONSECUTIVE_DETECTIONS_REQUIRED = 2
 DETECTION_WINDOW = 1.0  # Time window to check for consecutive detections
+
+# Add this after your audio processing parameters
+N_MELS = 128  # Number of mel bands
+HOP_LENGTH = 512
+# Calculate the time dimension based on your audio parameters
+T_DIM = 1 + int(BUFFER_SIZE / HOP_LENGTH)  # Time dimension of the spectrogram
 
 # Initialize the audio model
 audio_model = MeowCNN(T_DIM).to(device)
