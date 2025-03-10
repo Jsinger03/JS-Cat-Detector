@@ -12,6 +12,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque
+import random
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -119,7 +120,7 @@ class Detection:
 
 recent_detections: Deque[Detection] = deque(maxlen=10)
 
-def check_consecutive_detections(confidence_threshold=0.95, time_window=DETECTION_WINDOW):
+def check_consecutive_detections(confidence_threshold=0.75, time_window=DETECTION_WINDOW):
     """Check if we have enough recent high-confidence detections."""
     if len(recent_detections) < CONSECUTIVE_DETECTIONS_REQUIRED:
         return False
@@ -141,6 +142,10 @@ def audio_callback(indata, frames, time_info, status):
     
     if status:
         logger.warning(f"Audio callback status: {status}")
+    
+    # Periodically log that audio is being received
+    if random.random() < 0.01:  # Log roughly 1% of the time
+        logger.debug(f"Audio callback active, max amplitude: {np.max(np.abs(indata)):.4f}")
     
     # Copy data to buffer
     samples_to_copy = min(len(indata), BUFFER_SIZE - buffer_index)
@@ -181,8 +186,13 @@ def process_audio_buffer():
             meow_prob = probabilities[0, 1].item()
         
         # Add to recent detections if probability is high enough
-        if meow_prob > 0.7:  # Lower threshold for tracking
+        if meow_prob > 0.5:  # Lower threshold for tracking
             recent_detections.append(Detection(time.time(), meow_prob))
+            logger.debug(f"Added detection with confidence: {meow_prob:.4f}")
+        
+        # Log all predictions at debug level for troubleshooting
+        if meow_prob > 0.3:  # Log all predictions above 30% confidence
+            logger.debug(f"Meow prediction: {meow_prob:.4f}")
         
         # Update detection status based on consecutive detections
         with meow_lock:
